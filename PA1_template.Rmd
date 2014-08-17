@@ -1,20 +1,117 @@
-# Reproducible Research: Peer Assessment 1
+# Activity Monitoring Data Analysis
+```{r setOptionsIni, echo=FALSE, results="hide"}
+opts_chunk$set(echo=TRUE, results="hold")
+Sys.setlocale(category = "LC_TIME", locale = "C")
+```
+```{r loadLibraries, echo=FALSE, results="hide"}
+library(ggplot2)
+```
+## Introduction
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a [Fitbit](http://www.fitbit.com/), [Nike Fuelband](http://www.nike.com/us/en_us/c/nikeplus-fuelband) or [Jawbone Up](https://jawbone.com/up). These type of devices are part of the "quantified self" movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data. 
+
+This report makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+## Data  
+### Data Source Location  
+The data analysed in this report can be downloaded here:  
+- [Activity Monitoring Dataset](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)  
+
+To run the report the .zip file downloaded must be unzipped and placed in the R Working Directory.  
+### Data Description  
+The variables included in this dataset are:  
+- **steps**: Number of steps taking in a 5-minute interval (missing values are coded as NA)  
+- **date**: The date on which the measurement was taken in YYYY-MM-DD format  
+-	**interval**: Identifier for the 5-minute interval in which measurement was taken  
+
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.  
+
+## Analysis
+### Loading and preprocessing the data
+First read data.
+```{r readData}
+activity<-read.csv("activity.csv",colClasses=c("integer","Date","integer"))
+```
+### Steps taken per day
+Calculate sum, mean and median of total number of steps taken per day.
+```{r aggDate}
+dateSum<-aggregate(steps~date,data=activity,FUN=sum,na.action=na.omit)
+dateMedian<-aggregate(steps~date,data=activity,FUN=median,na.action=na.omit)
+dateMean<-aggregate(steps~date,data=activity,FUN=mean,na.action=na.omit)
+dateTot<-merge(merge(dateSum,dateMean,by="date"),dateMedian,by="date")
+names(dateTot)<-c("date","stepSum","stepMean","StepMedian")
+dateTot
+```
+Make a histogram of the total number of steps taken each day.
+```{r plotDate, fig.width=11, fig.height=5}
+barplot(dateSum$steps,names.arg=dateSum$date,ylab="Total Number of Steps",xlab="Date")
+```
+### Daily activity pattern
+Calculate the average number of steps taken per 5-minute interval across all days.
+```{r aggInterval}
+intervalAvg<-aggregate(steps~interval,data=activity,FUN=mean,na.action=na.omit)
+maxStep<-subset(intervalAvg,steps==max(intervalAvg$steps))$interval
+```
+The 5-minute interval that contains the maximum number is **`r maxStep`**.
+
+Make a time series plot of the average number of steps taken per 5-minute interval across all days.
+```{r plotInterval, fig.width=11, fig.height=5}
+qplot(intervalAvg$interval,intervalAvg$steps,geom="line",ylab="Average Number of Steps",xlab="5-Minute Intervals")
+```
+### Managing missing values
+Calculate total number of rows with missing values.
+```{r missingTot}
+missingSteps<-sum(is.na(activity$steps))
+missingDate<-sum(is.na(activity$date))
+missingInterval<-sum(is.na(activity$interval))
+missingTot<-sum(is.na(activity$steps)|is.na(activity$date)|is.na(activity$interval))
+```
+Total number of rows that contains missing values is **`r missingTot`**:
+- **`r missingSteps`** for *steps* variable
+- **`r missingDate`** for *date* variable
+- **`r missingInterval`** for *interval* variable  
+
+Replace *steps* variable missing values with the average number of steps taken per 5-minute interval across all days and create a new dataset that is equal to the original one but with the missing data filled in.
+```{r replaceMiss}
+allData<-merge(activity,intervalAvg,by="interval",suffixes=c("","Avg"))
+allData[is.na(allData$steps),]$steps<-allData[is.na(allData$steps),]$stepsAvg
+activityNew<-allData[order(allData$date,allData$interval),c(2,3,1)]
+row.names(activityNew)<-1:nrow(activityNew)
+```
+Calculate sum, mean and median of total number of steps taken per day using the new dataset.
+```{r aggDateNew}
+dateSumNew<-aggregate(steps~date,data=activityNew,FUN=sum,na.action=na.omit)
+dateMedianNew<-aggregate(steps~date,data=activityNew,FUN=median,na.action=na.omit)
+dateMeanNew<-aggregate(steps~date,data=activityNew,FUN=mean,na.action=na.omit)
+dateTotNew<-merge(merge(dateSumNew,dateMeanNew,by="date"),dateMedianNew,by="date")
+names(dateTotNew)<-c("date","stepSum","stepMean","StepMedian")
+dateTotNew
+```
+Make a histogram of the total number of steps taken each day using the new dataset.
+```{r plotDateNew, fig.width=11, fig.height=5}
+barplot(dateSumNew$steps,names.arg=dateSumNew$date,ylab="Total Number of Steps",xlab="Date")
+```
+### Differences between weekdays and weekends
+Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+```{r weekFlag}
+weekFlag<-substr(weekdays(activityNew$date),1,1)
+weekFlag[weekFlag!="S"]<-"weekday"
+weekFlag[weekFlag=="S"]<-"weekend"
+weekFlag<-as.factor(weekFlag)
+activityWeek<-cbind(activityNew,weekFlag)
+```
+Calculate the average number of steps taken per 5-minute interval across all days using new dataset.
+```{r aggIntervalWeek}
+intervalAvgWeek<-aggregate(steps~interval+weekFlag,data=activityWeek,FUN=mean,na.action=na.omit)
+```
+Make a panel plot containing a time series plot of the average number of steps taken per 5-minute interval across all weekday days or weekend days. 
+```{r plotIntervalNew, fig.width=11, fig.height=5}
+qplot(interval,steps,data=intervalAvgWeek,geom="line",facets=.~weekFlag,ylab="Average Number of Steps",xlab="5-Minute Intervals")
+```
 
 
-## Loading and preprocessing the data
+```{r setOptionsFin, echo=FALSE, results="hide"}
+Sys.setlocale(category = "LC_TIME", locale = "")
+```
 
 
 
-## What is mean total number of steps taken per day?
 
-
-
-## What is the average daily activity pattern?
-
-
-
-## Imputing missing values
-
-
-
-## Are there differences in activity patterns between weekdays and weekends?
